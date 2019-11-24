@@ -33,9 +33,8 @@ const getMarketMetrics = async (ticker) => {
 const newPrice = (position, changePercentage, volatility, price, interest) => {
   const isEquityOption = position['instrument-type'] == 'Equity Option';
   const isEquity = position['instrument-type'] == 'Equity';
-  const simulatedPrice = price * (1 + changePercentage / 100);
   if (isEquity) {
-    return simulatedPrice;
+    return price * (1 + changePercentage / 100);
   } else {
     const optionType = util.getOptionType(position.symbol);
     const strikePrice = isEquityOption ? util.getStrikePriceOptions(position.symbol) : util.getStrikePriceFutures(position.symbol);
