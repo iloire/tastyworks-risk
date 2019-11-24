@@ -10,6 +10,8 @@ The software will give you the estimated upside or drawdown by forecasting optio
 {
   "ZM": {
     "beta": 1,
+    "changePercentageInSPY": -1,
+    "betaWeightedChange": -1,
     "positions": {
      "ZM    200117P00075000": {
       "direction": "Short",

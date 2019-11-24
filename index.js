@@ -60,12 +60,14 @@ const getNewPriceForSimulatedPosition = async (position, changePercentage) => {
   return newPrice(position, changePercentage, volatility, price, interest);
 };
 
-const getDataForUnderlying = async (underlying, positionsForUnderlaying, changePercentage) => {
+const getDataForUnderlying = async (underlying, positionsForUnderlaying, changePercentageInSPY) => {
   const metrics = await getMarketMetrics(underlying);
   const beta = Number(metrics.items[0].beta) || 1;
-  const betaWeightedChange = changePercentage * beta;
+  const betaWeightedChange = changePercentageInSPY * beta;
   const data = {
+    changePercentageInSPY,
     beta,
+    betaWeightedChange,
     positions: {},
     pl: 0
   };
