@@ -18,7 +18,7 @@ const credentials = {
 
 // input parameters
 const DEFAULT_CHANGES = [-5, -3, -2, -1, 1, 2, 3, 5];
-const interest = 0.03; // risk-free interest rate. Used in black scholes formula
+const RISK_FREE_INTEREST_RATE = 0.03; // risk-free interest rate. Used in black scholes formula
 
 const cacheMarketMetrics = {};
 const getMarketMetrics = async (ticker) => {
@@ -51,28 +51,29 @@ const newPrice = (position, changePercentage, volatility, price, interest) => {
   }
 };
 
-const getNewPriceForSimulatedPosition = async (position, changePercentage) => {
+const getNewPriceForSimulatedPosition = async (position, changePercentage, volatility, interest) => {
   const ticker = position['underlying-symbol'];
-  const metrics = await getMarketMetrics(ticker);
-  const volatility = metrics.items[0]['implied-volatility-index'];
   const stockInfo = await stock(ticker);
   const price = stockInfo.price.regularMarketPrice;
   return newPrice(position, changePercentage, volatility, price, interest);
 };
 
-const getDataForUnderlying = async (underlying, positionsForUnderlaying, changePercentageInSPY) => {
+const getDataForUnderlying = async (underlying, positionsForUnderlaying, changePercentageInSPY, riskFreeInterestRate) => {
   const metrics = await getMarketMetrics(underlying);
+  const volatility = metrics.items[0]['implied-volatility-index'];
   const beta = Number(metrics.items[0].beta) || 1;
   const betaWeightedChange = changePercentageInSPY * beta;
   const data = {
     changePercentageInSPY,
     beta,
     betaWeightedChange,
+    volatility,
+    riskFreeInterestRate,
     positions: {},
     pl: 0
   };
   for (const p of positionsForUnderlaying) {
-    const simulatedPrice = await getNewPriceForSimulatedPosition(p, betaWeightedChange);
+    const simulatedPrice = await getNewPriceForSimulatedPosition(p, betaWeightedChange, metrics.items[0]['implied-volatility-index'], riskFreeInterestRate);
     const currentPrice = Number(p['mark-price']);
     const direction = p['quantity-direction'];
     const quantity = p['quantity'];
@@ -94,14 +95,14 @@ const getDataForUnderlying = async (underlying, positionsForUnderlaying, changeP
   return data;
 };
 
-const runPositionsOnChangePercentage = async (positions, changePercentageInSPY) => {
+const runPositionsOnChangePercentage = async (positions, changePercentageInSPY, riskFreeInterest) => {
   const groups = util.groupBy(positions, 'underlying-symbol');
   const risk = {
     underlying: {},
     total: 0
   }
   for (const underlying of Object.keys(groups).sort()) {
-    const riskPerUnderlying = await getDataForUnderlying(underlying, groups[underlying], changePercentageInSPY);
+    const riskPerUnderlying = await getDataForUnderlying(underlying, groups[underlying], changePercentageInSPY, riskFreeInterest);
     risk.underlying[underlying] = riskPerUnderlying;
     risk.total += riskPerUnderlying.pl;
   }
@@ -137,7 +138,7 @@ const getRisk = async (options = {}) => {
     .then(async positions => {
       const risk = {};
       for (const c of (options.percentageChangesinSPY || DEFAULT_CHANGES)) {
-        risk[c] = await runPositionsOnChangePercentage(positions, c);
+        risk[c] = await runPositionsOnChangePercentage(positions, c, options.riskFreeInterestRate || RISK_FREE_INTEREST_RATE);
       }
       return risk;
     })

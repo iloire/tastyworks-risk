@@ -12,6 +12,8 @@ The software will give you the estimated upside or drawdown by forecasting optio
     "beta": 1,
     "changePercentageInSPY": -1,
     "betaWeightedChange": -1,
+    "volatility": "0.615217461",
+    "riskFreeInterestRate": 0.03,
     "positions": {
      "ZM    200117P00075000": {
       "direction": "Short",
