@@ -132,18 +132,18 @@ const getRisk = async (options = {}) => {
           byChangeInUnderlying: []
         };
 
-        for (const changeInSPYPercentage of (options.percentageChangesinSPY || DEFAULT_CHANGES_IN_SPY)) {
-          const betaWeightedChange = changeInSPYPercentage * beta;
+        for (const changePercentage of (options.percentageChangesinSPY || DEFAULT_CHANGES_IN_SPY)) {
+          const betaWeightedChange = changePercentage * beta;
           risk[underlying].byChangeInSPYIndex.push({
-            changeInSPYPercentage,
+            changePercentage,
             simulation: getDataForUnderlying(groups[underlying], betaWeightedChange, currentPriceUnderlying, volatility, riskFreeInterestRate)
           });
         }
 
-        for (const changeInUnderlyingPercentage of (options.percentageChangesinUnderlying || DEFAULT_CHANGES_IN_UNDERLYING)) {
+        for (const changePercentage of (options.percentageChangesinUnderlying || DEFAULT_CHANGES_IN_UNDERLYING)) {
           risk[underlying].byChangeInUnderlying.push({
-            changeInUnderlyingPercentage,
-            simulation: getDataForUnderlying(groups[underlying], changeInUnderlyingPercentage, currentPriceUnderlying, volatility, riskFreeInterestRate)
+            changePercentage,
+            simulation: getDataForUnderlying(groups[underlying], changePercentage, currentPriceUnderlying, volatility, riskFreeInterestRate)
           });
         }
       }
