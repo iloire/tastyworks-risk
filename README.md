@@ -8,25 +8,33 @@ The software will give you the estimated upside or drawdown by forecasting optio
 
 ```
 {
-  "ZM": {
-    "beta": 1,
-    "changePercentageInSPY": -1,
-    "betaWeightedChange": -1,
-    "volatility": "0.615217461",
-    "riskFreeInterestRate": 0.03,
-    "positions": {
-     "ZM    200117P00075000": {
-      "direction": "Short",
-      "quantity": 3,
-      "currentPrice": 7,
-      "simulatedPrice": 8.048063708964378,
-      "currentValue": -2100,
-      "simulatedValue": -2414.4191126893134,
-      "pl": -314.41911268931335
-     }
-    },
-    "pl": -314.41911268931335
-  }
+ "ZM": {
+  "meta": {
+   "beta": 1,
+   "currentPriceUnderlying": 74.55,
+   "volatility": "0.611642779",
+   "riskFreeInterestRate": 0.03
+  },
+  "byChangeInSPYIndex": [
+   {
+    "changePercentage": -3,
+    "simulation": {
+     "newUnderlyingSimulatedPrice": 72.31349999999999,
+     "betaWeightedChangePercentage": -3,
+     "positions": {
+      "ZM    200117P00075000": {
+       "direction": "Short",
+       "quantity": 3,
+       "currentPrice": 6.25,
+       "simulatedPrice": 8.003068758248162,
+       "currentValue": -1875,
+       "simulatedValue": -2400.9206274744483,
+       "pl": -525.9206274744483
+      }
+     },
+     "pl": -525.9206274744483
+    }
+   }
 }
 ...
 ```
