@@ -17,7 +17,8 @@ const credentials = {
 };
 
 // input parameters
-const DEFAULT_CHANGES = [-5, -3, -2, -1, 1, 2, 3, 5];
+const DEFAULT_CHANGES_IN_SPY = [-5, -3, -2, -1, 1, 2, 3, 5];
+const DEFAULT_CHANGES_IN_UNDERLYING = [-15, -10, -5, 5, 10, 15, 20];
 const RISK_FREE_INTEREST_RATE = 0.03; // risk-free interest rate. Used in black scholes formula
 
 const cacheMarketMetrics = {};
@@ -30,57 +31,44 @@ const getMarketMetrics = async (ticker) => {
   return metrics;
 };
 
-const newPrice = (position, changePercentage, volatility, price, interest) => {
-  const isEquityOption = position['instrument-type'] == 'Equity Option';
-  const isEquity = position['instrument-type'] == 'Equity';
-  if (isEquity) {
-    return price * (1 + changePercentage / 100);
-  } else {
-    const optionType = util.getOptionType(position.symbol);
-    const strikePrice = isEquityOption ? util.getStrikePriceOptions(position.symbol) : util.getStrikePriceFutures(position.symbol);
-    const expirationYears = util.getExpirationInYears(new Date(), position.symbol);
-    return blackscholes.blackScholes(
-      simulatedPrice,
-      strikePrice,
-      expirationYears,
-      volatility,
-      interest,
-      optionType
-    );
-  }
-};
-
-const getNewPriceForSimulatedPosition = async (position, changePercentage, volatility, interest) => {
-  const ticker = position['underlying-symbol'];
-  const stockInfo = await stock(ticker);
-  const price = stockInfo.price.regularMarketPrice;
-  return newPrice(position, changePercentage, volatility, price, interest);
-};
-
-const getDataForUnderlying = async (underlying, positionsForUnderlaying, changePercentageInSPY, riskFreeInterestRate) => {
-  const metrics = await getMarketMetrics(underlying);
-  const volatility = metrics.items[0]['implied-volatility-index'];
-  const beta = Number(metrics.items[0].beta) || 1;
-  const betaWeightedChange = changePercentageInSPY * beta;
+const getDataForUnderlying = (positionsForUnderlaying, betaWeightedChangePercentage, currentPriceUnderlying, volatility, riskFreeInterestRate) => {
   const data = {
-    changePercentageInSPY,
-    beta,
-    betaWeightedChange,
-    volatility,
-    riskFreeInterestRate,
+    betaWeightedChangePercentage,
     positions: {},
     pl: 0
   };
   for (const p of positionsForUnderlaying) {
-    const simulatedPrice = await getNewPriceForSimulatedPosition(p, betaWeightedChange, metrics.items[0]['implied-volatility-index'], riskFreeInterestRate);
-    const currentPrice = Number(p['mark-price']);
+    const newUnderlyingSimulatedPrice = currentPriceUnderlying * (1 + betaWeightedChangePercentage / 100);
+    const isEquityOption = p['instrument-type'] == 'Equity Option';
+    const isEquity = p['instrument-type'] == 'Equity';
+    let simulatedPrice;
+    if (isEquity) {
+      simulatedPrice = newUnderlyingSimulatedPrice;
+    }
+    else {
+      const optionType = util.getOptionType(p.symbol);
+      const strikePrice = isEquityOption ? util.getStrikePriceOptions(p.symbol) : util.getStrikePriceFutures(p.symbol);
+      const expirationYears = util.getExpirationInYears(new Date(), p.symbol);
+      simulatedPrice = blackscholes.blackScholes(
+        newUnderlyingSimulatedPrice,
+        strikePrice,
+        expirationYears,
+        volatility,
+        riskFreeInterestRate,
+        optionType
+      );
+    }
+
     const direction = p['quantity-direction'];
     const quantity = p['quantity'];
     const short = direction === 'Short';
+    const currentPrice = Number(p['mark-price']);
     const currentValue = currentPrice * p.quantity * p.multiplier * (short ? -1 : 1);
     const simulatedValue = simulatedPrice * p.quantity * p.multiplier * (short ? -1 : 1);
     const pl = (simulatedValue - currentValue);
+
     data.positions[p.symbol] = {
+      newUnderlyingSimulatedPrice,
       direction,
       quantity,
       currentPrice,
@@ -93,20 +81,6 @@ const getDataForUnderlying = async (underlying, positionsForUnderlaying, changeP
   };
   return data;
 };
-
-const runPositionsOnChangePercentage = async (positions, changePercentageInSPY, riskFreeInterest) => {
-  const groups = util.groupBy(positions, 'underlying-symbol');
-  const risk = {
-    underlying: {},
-    total: 0
-  }
-  for (const underlying of Object.keys(groups).sort()) {
-    const riskPerUnderlying = await getDataForUnderlying(underlying, groups[underlying], changePercentageInSPY, riskFreeInterest);
-    risk.underlying[underlying] = riskPerUnderlying;
-    risk.total += riskPerUnderlying.pl;
-  }
-  return risk;
-}
 
 const getPositions = async () => {
   TastyWorks.setUser(credentials);
@@ -133,12 +107,47 @@ const chartRisk = async (options = {}) => {
 }
 
 const getRisk = async (options = {}) => {
+  const riskFreeInterestRate = options.riskFreeInterest || RISK_FREE_INTEREST_RATE;
   return getPositions()
-    .then(async positions => {
+    .then(positions => util.groupBy(positions, 'underlying-symbol'))
+    .then(async groups => {
+
       const risk = {};
-      for (const c of (options.percentageChangesinSPY || DEFAULT_CHANGES)) {
-        risk[c] = await runPositionsOnChangePercentage(positions, c, options.riskFreeInterestRate || RISK_FREE_INTEREST_RATE);
+      for (const underlying of Object.keys(groups).sort()) {
+
+        const currentPriceUnderlying = (await stock(underlying)).price.regularMarketPrice;
+
+        const metrics = (await getMarketMetrics(underlying)).items[0];
+        const volatility = metrics['implied-volatility-index'];
+        const beta = Number(metrics.beta) || 1;
+
+        risk[underlying] = {
+          meta: {
+            beta,
+            currentPriceUnderlying,
+            volatility,
+            riskFreeInterestRate,
+          },
+          byChangeInSPYIndex: [],
+          byChangeInUnderlying: []
+        };
+
+        for (const changeInSPYPercentage of (options.percentageChangesinSPY || DEFAULT_CHANGES_IN_SPY)) {
+          const betaWeightedChange = changeInSPYPercentage * beta;
+          risk[underlying].byChangeInSPYIndex.push({
+            changeInSPYPercentage,
+            simulation: getDataForUnderlying(groups[underlying], betaWeightedChange, currentPriceUnderlying, volatility, riskFreeInterestRate)
+          });
+        }
+
+        for (const changeInUnderlyingPercentage of (options.percentageChangesinUnderlying || DEFAULT_CHANGES_IN_UNDERLYING)) {
+          risk[underlying].byChangeInUnderlying.push({
+            changeInUnderlyingPercentage,
+            simulation: getDataForUnderlying(groups[underlying], changeInUnderlyingPercentage, currentPriceUnderlying, volatility, riskFreeInterestRate)
+          });
+        }
       }
+
       return risk;
     })
 };
