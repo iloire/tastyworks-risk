@@ -32,13 +32,14 @@ const getMarketMetrics = async (ticker) => {
 };
 
 const getDataForUnderlying = (positionsForUnderlaying, betaWeightedChangePercentage, currentPriceUnderlying, volatility, riskFreeInterestRate) => {
+  const newUnderlyingSimulatedPrice = currentPriceUnderlying * (1 + betaWeightedChangePercentage / 100);
   const data = {
+    newUnderlyingSimulatedPrice,
     betaWeightedChangePercentage,
     positions: {},
     pl: 0
   };
   for (const p of positionsForUnderlaying) {
-    const newUnderlyingSimulatedPrice = currentPriceUnderlying * (1 + betaWeightedChangePercentage / 100);
     const isEquityOption = p['instrument-type'] == 'Equity Option';
     const isEquity = p['instrument-type'] == 'Equity';
     let simulatedPrice;
@@ -68,7 +69,6 @@ const getDataForUnderlying = (positionsForUnderlaying, betaWeightedChangePercent
     const pl = (simulatedValue - currentValue);
 
     data.positions[p.symbol] = {
-      newUnderlyingSimulatedPrice,
       direction,
       quantity,
       currentPrice,
