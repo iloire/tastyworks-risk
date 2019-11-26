@@ -20,6 +20,7 @@ const credentials = {
 const DEFAULT_CHANGES_IN_SPY = [-5, -3, -2, -1, 1, 2, 3, 5];
 const DEFAULT_CHANGES_IN_UNDERLYING = [-15, -10, -5, 5, 10, 15, 20];
 const RISK_FREE_INTEREST_RATE = 0.03; // risk-free interest rate. Used in black scholes formula
+const GO_FORWARD_DAYS_IN_TIME = [0, 10, 20];
 
 const cacheMarketMetrics = {};
 const getMarketMetrics = async (ticker) => {
@@ -31,15 +32,19 @@ const getMarketMetrics = async (ticker) => {
   return metrics;
 };
 
-const getDataForUnderlying = (positionsForUnderlaying, betaWeightedChangePercentage, currentPriceUnderlying, volatility, riskFreeInterestRate) => {
+const getDataForUnderlying = (positionsForUnderlaying, betaWeightedChangePercentage, currentPriceUnderlying, volatility, riskFreeInterestRate, goForwardDaysInTime) => {
   const newUnderlyingSimulatedPrice = currentPriceUnderlying * (1 + betaWeightedChangePercentage / 100);
   const data = {
+    goForwardDaysInTime,
     newUnderlyingSimulatedPrice,
     betaWeightedChangePercentage,
     positions: {},
     pl: 0
   };
   for (const p of positionsForUnderlaying) {
+    const expirationYears = util.getExpirationInYears(new Date(), p.symbol);
+    const simulatedExpirationYears = expirationYears - goForwardDaysInTime / 365;
+
     const isEquityOption = p['instrument-type'] == 'Equity Option';
     const isEquity = p['instrument-type'] == 'Equity';
     let simulatedPrice;
@@ -49,11 +54,10 @@ const getDataForUnderlying = (positionsForUnderlaying, betaWeightedChangePercent
     else {
       const optionType = util.getOptionType(p.symbol);
       const strikePrice = isEquityOption ? util.getStrikePriceOptions(p.symbol) : util.getStrikePriceFutures(p.symbol);
-      const expirationYears = util.getExpirationInYears(new Date(), p.symbol);
       simulatedPrice = blackscholes.blackScholes(
         newUnderlyingSimulatedPrice,
         strikePrice,
-        expirationYears,
+        simulatedExpirationYears <= 0 ? 0 : simulatedExpirationYears, // account for option expired.
         volatility,
         riskFreeInterestRate,
         optionType
@@ -75,6 +79,8 @@ const getDataForUnderlying = (positionsForUnderlaying, betaWeightedChangePercent
       simulatedPrice,
       currentValue,
       simulatedValue,
+      expirationYears,
+      simulatedExpirationYears,
       pl
     };
     data.pl += pl;
@@ -97,16 +103,17 @@ const getPositions = async () => {
 
 const chartRisk = async (options = {}) => {
   return getRisk(options)
-  .then((data) => {
-    const chartData = Object.keys(data)
-      .map(Number).sort((a, b) => a - b)
-      .map(k => ({ key: k, value: data[k].total}));
-    chart.plot(chartData, path.join(options.path, 'simulation'), 'Risk simulator');
-    return chartData;
-  })
+    .then((data) => {
+      const chartData = Object.keys(data)
+        .map(Number).sort((a, b) => a - b)
+        .map(k => ({ key: k, value: data[k].total }));
+      chart.plot(chartData, path.join(options.path, 'simulation'), 'Risk simulator');
+      return chartData;
+    })
 }
 
 const getRisk = async (options = {}) => {
+  const forwardExpirationDaysInTime = options.forwardExpirationDaysInTime || GO_FORWARD_DAYS_IN_TIME;
   const riskFreeInterestRate = options.riskFreeInterest || RISK_FREE_INTEREST_RATE;
   return getPositions()
     .then(positions => util.groupBy(positions, 'underlying-symbol'))
@@ -123,28 +130,37 @@ const getRisk = async (options = {}) => {
 
         risk[underlying] = {
           meta: {
+            forwardExpirationDaysInTime,
             beta,
             currentPriceUnderlying,
             volatility,
             riskFreeInterestRate,
           },
-          byChangeInSPYIndex: [],
-          byChangeInUnderlying: []
+          byForwardExpirationDaysInTime: [],
         };
 
-        for (const changePercentage of (options.percentageChangesinSPY || DEFAULT_CHANGES_IN_SPY)) {
-          const betaWeightedChange = changePercentage * beta;
-          risk[underlying].byChangeInSPYIndex.push({
-            changePercentage,
-            simulation: getDataForUnderlying(groups[underlying], betaWeightedChange, currentPriceUnderlying, volatility, riskFreeInterestRate)
-          });
-        }
+        for (const expirationForwardDays of forwardExpirationDaysInTime) {
+          const forExpiration = {
+            expirationForwardDays, simulations: {
+              byChangeInSPYIndex: [],
+              byChangeInUnderlying: []
+            }
+          };
+          for (const changePercentage of (options.percentageChangesinSPY || DEFAULT_CHANGES_IN_SPY)) {
+            const betaWeightedChange = changePercentage * beta;
+            forExpiration.simulations.byChangeInSPYIndex.push({
+              changePercentage,
+              simulation: getDataForUnderlying(groups[underlying], betaWeightedChange, currentPriceUnderlying, volatility, riskFreeInterestRate, expirationForwardDays)
+            });
+          }
 
-        for (const changePercentage of (options.percentageChangesinUnderlying || DEFAULT_CHANGES_IN_UNDERLYING)) {
-          risk[underlying].byChangeInUnderlying.push({
-            changePercentage,
-            simulation: getDataForUnderlying(groups[underlying], changePercentage, currentPriceUnderlying, volatility, riskFreeInterestRate)
-          });
+          for (const changePercentage of (options.percentageChangesinUnderlying || DEFAULT_CHANGES_IN_UNDERLYING)) {
+            forExpiration.simulations.byChangeInUnderlying.push({
+              changePercentage,
+              simulation: getDataForUnderlying(groups[underlying], changePercentage, currentPriceUnderlying, volatility, riskFreeInterestRate, expirationForwardDays)
+            });
+          }
+          risk[underlying].byForwardExpirationDaysInTime.push(forExpiration);
         }
       }
 
