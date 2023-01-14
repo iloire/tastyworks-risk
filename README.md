@@ -1,5 +1,7 @@
 # Tastyworks risk simulator
 
+![I, Robot](https://raw.githubusercontent.com/iloire/tastyworks-risk/master/robot-trader.png)
+
 Test the max upside and potential drawdowns of your Tastyworks account for a certain percentage change in the SPY.
 
 The software will give you the estimated upside or drawdown by forecasting option prices (using Black Scholes formula) for your current positions according to their SPY beta weight.
